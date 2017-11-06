@@ -23,7 +23,7 @@ FLAG_CPU_MODE = True
 #-----------------------------------------------------------------------------#
 paths = dict()
 
-# Skip-thoughts
+# Skip-thoughts #no longer needed
 paths['skmodels'] = '/Users/wangjingjin/PycharmProjects/AI_Writer/neural_storyteller/skmodels/'
 paths['sktables'] = '/Users/wangjingjin/PycharmProjects/AI_Writer/neural_storyteller/skmodels/'
 
