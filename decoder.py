@@ -5,7 +5,7 @@ import theano
 import theano.tensor as tensor
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-import cPickle as pkl
+from six.moves import cPickle as pkl
 import numpy
 
 from search import gen_sample

@@ -1,11 +1,13 @@
 """
 Joint image-sentence embedding space
 """
+import warnings
+
 import theano
 import theano.tensor as tensor
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-import cPickle as pkl
+from six.moves import cPickle as pkl
 import numpy
 import nltk
 
@@ -74,7 +76,7 @@ def encode_sentences(model, X, verbose=False, batch_size=128):
     # Get features. This encodes by length, in order to avoid wasting computation
     for k in ds.keys():
         if verbose:
-            print k
+            print(k)
         numbatches = len(ds[k]) / batch_size + 1
         for minibatch in range(numbatches):
             caps = ds[k][minibatch::numbatches]

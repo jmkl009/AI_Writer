@@ -1,7 +1,7 @@
 """
 Story generation
 """
-import cPickle as pkl
+from six.moves import cPickle as pkl
 import numpy
 import copy
 import sys
@@ -18,8 +18,8 @@ from lasagne.layers import InputLayer, DenseLayer, NonlinearityLayer, DropoutLay
 from lasagne.layers import MaxPool2DLayer as PoolLayer
 from lasagne.nonlinearities import softmax
 from lasagne.utils import floatX
-if not config.FLAG_CPU_MODE:
-    from lasagne.layers.corrmm import Conv2DMMLayer as ConvLayer
+#if not config.FLAG_CPU_MODE:
+ #   from lasagne.layers.corrmm import Conv2DMMLayer as ConvLayer
 
 from scipy import optimize, stats
 from collections import OrderedDict, defaultdict, Counter
@@ -50,10 +50,10 @@ def story(z, image_loc, k=100, bw=50, lyric=False):
     sorted_args = numpy.argsort(scores)[::-1]
     sentences = [z['cap'][a] for a in sorted_args[:k]]
 
-    print 'NEAREST-CAPTIONS: '
+    print('NEAREST-CAPTIONS: ')
     for s in sentences[:5]:
-        print s
-    print ''
+        print(s)
+    print('')
 
     # Compute skip-thought vectors for sentences
     svecs = skipthoughts.encode(z['stv'], sentences, verbose=False)
@@ -63,39 +63,38 @@ def story(z, image_loc, k=100, bw=50, lyric=False):
 
     # Generate story conditioned on shift
     passage = decoder.run_sampler(z['dec'], shift, beam_width=bw)
-    print 'OUTPUT: '
+    print('OUTPUT: ')
     if lyric:
         for line in passage.split(','):
             if line[0] != ' ':
-                print line
+                print(line)
             else:
-                print line[1:]
+                print(line[1:])
     else:
-        print passage
+        print(passage)
 
 
 def load_all():
     """
     Load everything we need for generating
     """
-    print config.paths['decmodel']
+    print(config.paths['decmodel'])
 
     # Skip-thoughts
-    print 'Loading skip-thoughts...'
-    stv = skipthoughts.load_model(config.paths['skmodels'],
-                                  config.paths['sktables'])
+    print('Loading skip-thoughts...')
+    stv = skipthoughts.load_model()
 
     # Decoder
-    print 'Loading decoder...'
+    print('Loading decoder...')
     dec = decoder.load_model(config.paths['decmodel'],
                              config.paths['dictionary'])
 
     # Image-sentence embedding
-    print 'Loading image-sentence embedding...'
+    print('Loading image-sentence embedding...')
     vse = embedding.load_model(config.paths['vsemodel'])
 
     # VGG-19
-    print 'Loading and initializing ConvNet...'
+    print('Loading and initializing ConvNet...')
 
     if config.FLAG_CPU_MODE:
         sys.path.insert(0, config.paths['pycaffe'])
@@ -108,18 +107,18 @@ def load_all():
         net = build_convnet(config.paths['vgg'])
 
     # Captions
-    print 'Loading captions...'
+    print('Loading captions...')
     cap = []
     with open(config.paths['captions'], 'rb') as f:
         for line in f:
             cap.append(line.strip())
 
     # Caption embeddings
-    print 'Embedding captions...'
+    print('Embedding captions...')
     cvec = embedding.encode_sentences(vse, cap, verbose=False)
 
     # Biases
-    print 'Loading biases...'
+    print('Loading biases...')
     bneg = numpy.load(config.paths['negbias'])
     bpos = numpy.load(config.paths['posbias'])
 
@@ -215,7 +214,7 @@ def build_convnet(path_to_vgg):
     net['fc8'] = DenseLayer(net['fc7'], num_units=1000, nonlinearity=None)
     net['prob'] = NonlinearityLayer(net['fc8'], softmax)
 
-    print 'Loading parameters...'
+    print('Loading parameters...')
     output_layer = net['prob']
     model = pkl.load(open(path_to_vgg))
     lasagne.layers.set_all_param_values(output_layer, model['param values'])

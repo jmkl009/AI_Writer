@@ -6,7 +6,10 @@ import os
 import theano
 import theano.tensor as tensor
 
-import cPickle as pkl
+try:
+    import _pickle as pkl
+except:
+    import pickle as pkl
 import numpy
 import copy
 import nltk
@@ -17,15 +20,27 @@ from nltk.tokenize import word_tokenize
 
 profile = False
 
+#-----------------------------------------------------------------------------#
+# Specify model and table locations here
+#-----------------------------------------------------------------------------#
+path_to_models = '/Users/wangjingjin/PycharmProjects/AI_Writer/neural_storyteller/skmodels/'
+path_to_tables = '/Users/wangjingjin/PycharmProjects/AI_Writer/neural_storyteller/skmodels/'
+#-----------------------------------------------------------------------------#
 
-def load_model(path_to_models, path_to_tables):
+path_to_umodel = os.path.join(path_to_models, 'uni_skip.npz')
+path_to_bmodel = os.path.join(path_to_models, 'bi_skip.npz')
+
+path_to_utable = os.path.join(path_to_tables, 'utable.npy')
+path_to_btable = os.path.join(path_to_tables, 'btable.npy')
+
+path_to_dictionary = os.path.join(path_to_tables, 'dictionary.txt')
+
+def load_model():
     """
     Load the model with saved tables
     """
-    path_to_umodel = path_to_models + 'uni_skip.npz'
-    path_to_bmodel = path_to_models + 'bi_skip.npz'
-
     # Load model options
+    print('Loading model parameters...')
     with open('%s.pkl'%path_to_umodel, 'rb') as f:
         uoptions = pkl.load(f)
     with open('%s.pkl'%path_to_bmodel, 'rb') as f:
@@ -40,15 +55,18 @@ def load_model(path_to_models, path_to_tables):
     btparams = init_tparams(bparams)
 
     # Extractor functions
+    print('Compiling encoders...')
     embedding, x_mask, ctxw2v = build_encoder(utparams, uoptions)
     f_w2v = theano.function([embedding, x_mask], ctxw2v, name='f_w2v')
     embedding, x_mask, ctxw2v = build_encoder_bi(btparams, boptions)
     f_w2v2 = theano.function([embedding, x_mask], ctxw2v, name='f_w2v2')
 
     # Tables
-    utable, btable = load_tables(path_to_tables)
+    print('Loading tables...')
+    utable, btable = load_tables()
 
     # Store everything we need in a dictionary
+    print('Packing up...')
     model = {}
     model['uoptions'] = uoptions
     model['boptions'] = boptions
@@ -59,20 +77,37 @@ def load_model(path_to_models, path_to_tables):
 
     return model
 
-def load_tables(path_to_tables):
+
+def load_tables():
     """
     Load the tables
     """
     words = []
-    utable = numpy.load(path_to_tables + 'utable.npy')
-    btable = numpy.load(path_to_tables + 'btable.npy')
-    f = open(path_to_tables + 'dictionary.txt', 'rb')
+    utable = numpy.load(path_to_utable, encoding='latin1')
+    btable = numpy.load(path_to_btable, encoding='latin1')
+    f = open(path_to_dictionary, 'rb')
     for line in f:
         words.append(line.decode('utf-8').strip())
     f.close()
     utable = OrderedDict(zip(words, utable))
     btable = OrderedDict(zip(words, btable))
     return utable, btable
+
+
+class Encoder(object):
+    """
+    Sentence encoder.
+    """
+
+    def __init__(self, model):
+      self._model = model
+
+    def encode(self, X, use_norm=True, verbose=True, batch_size=128, use_eos=False):
+      """
+      Encode sentences in the list X. Each entry will return a vector
+      """
+      return encode(self._model, X, use_norm, verbose, batch_size, use_eos)
+
 
 def encode(model, X, use_norm=True, verbose=True, batch_size=128, use_eos=False):
     """
@@ -97,8 +132,8 @@ def encode(model, X, use_norm=True, verbose=True, batch_size=128, use_eos=False)
     # Get features. This encodes by length, in order to avoid wasting computation
     for k in ds.keys():
         if verbose:
-            print k
-        numbatches = len(ds[k]) / batch_size + 1
+            print(k)
+        numbatches = int(len(ds[k]) / batch_size) + 1
         for minibatch in range(numbatches):
             caps = ds[k][minibatch::numbatches]
 
@@ -133,9 +168,10 @@ def encode(model, X, use_norm=True, verbose=True, batch_size=128, use_eos=False)
             for ind, c in enumerate(caps):
                 ufeatures[c] = uff[ind]
                 bfeatures[c] = bff[ind]
-    
+
     features = numpy.c_[ufeatures, bfeatures]
     return features
+
 
 def preprocess(text):
     """
@@ -152,32 +188,81 @@ def preprocess(text):
         X.append(result)
     return X
 
+
+def nn(model, text, vectors, query, k=5):
+    """
+    Return the nearest neighbour sentences to query
+    text: list of sentences
+    vectors: the corresponding representations for text
+    query: a string to search
+    """
+    qf = encode(model, [query])
+    qf /= norm(qf)
+    scores = numpy.dot(qf, vectors.T).flatten()
+    sorted_args = numpy.argsort(scores)[::-1]
+    sentences = [text[a] for a in sorted_args[:k]]
+    print('QUERY: ' + query)
+    print('NEAREST: ')
+    for i, s in enumerate(sentences):
+        print(s, sorted_args[i])
+
+
+def word_features(table):
+    """
+    Extract word features into a normalized matrix
+    """
+    features = numpy.zeros((len(table), 620), dtype='float32')
+    keys = table.keys()
+    for i in range(len(table)):
+        f = table[keys[i]]
+        features[i] = f / norm(f)
+    return features
+
+
+def nn_words(table, wordvecs, query, k=10):
+    """
+    Get the nearest neighbour words
+    """
+    keys = table.keys()
+    qf = table[query]
+    scores = numpy.dot(qf, wordvecs.T).flatten()
+    sorted_args = numpy.argsort(scores)[::-1]
+    words = [keys[a] for a in sorted_args[:k]]
+    print('QUERY: ' + query)
+    print('NEAREST: ')
+    for i, w in enumerate(words):
+        print(w)
+
+
 def _p(pp, name):
     """
     make prefix-appended name
     """
     return '%s_%s'%(pp, name)
 
+
 def init_tparams(params):
     """
     initialize Theano shared variables according to the initial parameters
     """
     tparams = OrderedDict()
-    for kk, pp in params.iteritems():
+    for kk, pp in params.items():
         tparams[kk] = theano.shared(params[kk], name=kk)
     return tparams
+
 
 def load_params(path, params):
     """
     load parameters
     """
     pp = numpy.load(path)
-    for kk, vv in params.iteritems():
+    for kk, vv in params.items():
         if kk not in pp:
             warnings.warn('%s is not in the archive'%kk)
             continue
         params[kk] = pp[kk]
     return params
+
 
 # layers: 'name': ('parameter initializer', 'feedforward')
 layers = {'gru': ('param_init_gru', 'gru_layer')}
@@ -185,6 +270,7 @@ layers = {'gru': ('param_init_gru', 'gru_layer')}
 def get_layer(name):
     fns = layers[name]
     return (eval(fns[0]), eval(fns[1]))
+
 
 def init_params(options):
     """
@@ -199,6 +285,7 @@ def init_params(options):
     params = get_layer(options['encoder'])[0](options, params, prefix='encoder',
                                               nin=options['dim_word'], dim=options['dim'])
     return params
+
 
 def init_params_bi(options):
     """
@@ -216,6 +303,7 @@ def init_params_bi(options):
                                               nin=options['dim_word'], dim=options['dim'])
     return params
 
+
 def build_encoder(tparams, options):
     """
     build an encoder, given pre-computed word embeddings
@@ -231,6 +319,7 @@ def build_encoder(tparams, options):
     ctx = proj[0][-1]
 
     return embedding, x_mask, ctx
+
 
 def build_encoder_bi(tparams, options):
     """
@@ -254,11 +343,13 @@ def build_encoder_bi(tparams, options):
 
     return embedding, x_mask, ctx
 
+
 # some utilities
 def ortho_weight(ndim):
     W = numpy.random.randn(ndim, ndim)
     u, s, v = numpy.linalg.svd(W)
     return u.astype('float32')
+
 
 def norm_weight(nin,nout=None, scale=0.1, ortho=True):
     if nout == None:
@@ -268,6 +359,7 @@ def norm_weight(nin,nout=None, scale=0.1, ortho=True):
     else:
         W = numpy.random.uniform(low=-scale, high=scale, size=(nin, nout))
     return W.astype('float32')
+
 
 def param_init_gru(options, params, prefix='gru', nin=None, dim=None):
     """
@@ -292,6 +384,7 @@ def param_init_gru(options, params, prefix='gru', nin=None, dim=None):
     params[_p(prefix,'bx')] = numpy.zeros((dim,)).astype('float32')
 
     return params
+
 
 def gru_layer(tparams, state_below, options, prefix='gru', mask=None, **kwargs):
     """
@@ -350,5 +443,3 @@ def gru_layer(tparams, state_below, options, prefix='gru', mask=None, **kwargs):
                                 strict=True)
     rval = [rval]
     return rval
-
-
